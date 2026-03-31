@@ -55,7 +55,9 @@ model, model_error = load_model()
 
 def make_prediction(lag_1, lag_2, lag_4, lag_8, lag_12, lag_26, lag_52,
                     ma_4, ma_12, std_4, weekofyear, month, year):
-    """Make prediction using the loaded model."""
+    """Make prediction using the loaded model.
+    Model was trained on log1p(y) — expm1 converts back to dollar scale.
+    """
     try:
         import time
         start = time.time()
@@ -68,7 +70,8 @@ def make_prediction(lag_1, lag_2, lag_4, lag_8, lag_12, lag_26, lag_52,
             "month": month, "year": year
         }])
 
-        prediction  = float(model.predict(features)[0])
+        # Model trained on log1p(y) — apply expm1 to get back to dollar scale
+        prediction  = float(np.expm1(model.predict(features)[0]))
         elapsed_ms  = round((time.time() - start) * 1000, 2)
         lower       = prediction * 0.90
         upper       = prediction * 1.10
@@ -182,12 +185,22 @@ with tab1:
 
             st.success(f"✅ Predicted Next-Week Sales: **{formatted}**")
 
-            # Contextual interpretation
+            # Contextual interpretation — addresses M4 feedback
             if lag_1 > 1_000_000:
                 pct_change = ((prediction - lag_1) / lag_1) * 100
                 direction  = "above" if pct_change >= 0 else "below"
+
+                # Colour-coded banner
+                abs_change = abs(pct_change)
+                if abs_change <= 5:
+                    st.success(f"🟢 Stable week ahead — Forecast is {abs_change:.1f}% {direction} last week. Continue routine inventory and staffing.")
+                elif pct_change > 5:
+                    st.warning(f"🟡 Higher demand expected — Forecast is {abs_change:.1f}% above last week. Consider increasing inventory and staffing.")
+                else:
+                    st.info(f"🔵 Lower demand expected — Forecast is {abs_change:.1f}% below last week. Consider reducing perishable orders.")
+
                 st.info(
-                    f"📊 This forecast is **{abs(pct_change):.1f}% {direction}** "
+                    f"📊 This forecast is **{abs_change:.1f}% {direction}** "
                     f"last week's sales of **${lag_1:,.2f}**. "
                     f"Use this to adjust inventory and staffing for next week."
                 )
@@ -238,7 +251,6 @@ with tab2:
 
     st.divider()
 
-    # Feature Importance
     st.markdown("#### 🎯 Feature Importance")
     if model is not None:
         try:
@@ -261,7 +273,6 @@ with tab2:
 
     st.divider()
 
-    # Prediction History Chart
     st.markdown("#### 📈 Prediction History Chart")
     if "history" in st.session_state and len(st.session_state.history) > 0:
         df_hist  = pd.DataFrame(st.session_state.history)
@@ -278,7 +289,6 @@ with tab2:
 
     st.divider()
 
-    # Response Time Chart
     st.markdown("#### ⚡ Response Time History")
     if "history" in st.session_state and len(st.session_state.history) > 0:
         df_hist = pd.DataFrame(st.session_state.history)
