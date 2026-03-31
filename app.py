@@ -74,7 +74,7 @@ def make_prediction(lag_1, lag_2, lag_4, lag_8, lag_12, lag_26, lag_52,
         prediction  = float(np.expm1(model.predict(features)[0]))
         log_pred = float(model.predict(features)[0])
         # Limit the raw prediction to avoid infinite values
-        log_pred = min(log_pred, 15.0)  # Arbitrary limit to prevent 'inf' after expm1 transf
+        log_pred = min(log_pred, 17.5)  # Arbitrary limit to prevent 'inf' after expm1 transformation
         prediction = float(np.expm1(log_pred))
         elapsed_ms  = round((time.time() - start) * 1000, 2)
         lower       = prediction * 0.90
