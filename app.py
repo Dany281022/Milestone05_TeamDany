@@ -70,24 +70,27 @@ def make_prediction(lag_1, lag_2, lag_4, lag_8, lag_12, lag_26, lag_52,
             "month": month, "year": year
         }])
 
-        # Model trained on log1p(y) — apply expm1 to get back to dollar scale
-        prediction  = float(np.expm1(model.predict(features)[0]))
+        # Prédiction brute en espace log
         log_pred = float(model.predict(features)[0])
-        # Limit the raw prediction to avoid infinite values
-        log_pred = min(log_pred, 17.5)  # Arbitrary limit to prevent 'inf' after expm1 transformation
+
+        # Limiter la prédiction brute pour éviter les valeurs infinies
+        log_pred = min(log_pred, 17.5)  # Limite arbitraire pour éviter des valeurs extrêmes
+
+        # Conversion en espace dollar
         prediction = float(np.expm1(log_pred))
-        # Limite la prédiction à ±50% de la valeur de lag_1 (vente de la semaine précédente)
+
+        # Limiter la prédiction à ±50% de la valeur de lag_1
         prediction = max(min(prediction, lag_1 * 1.5), lag_1 * 0.5)
-        prediction = float(np.expm1(log_pred))
-        elapsed_ms  = round((time.time() - start) * 1000, 2)
-        lower       = prediction * 0.90
-        upper       = prediction * 1.10
-        confidence  = f"USD {lower:,.0f} - USD {upper:,.0f} (+-10% interval)"
+
+        elapsed_ms = round((time.time() - start) * 1000, 2)
+        lower = prediction * 0.90
+        upper = prediction * 1.10
+        confidence = f"USD {lower:,.0f} - USD {upper:,.0f} (+-10% interval)"
 
         return {
-            "success":          True,
-            "prediction":       prediction,
-            "confidence":       confidence,
+            "success": True,
+            "prediction": prediction,
+            "confidence": confidence,
             "response_time_ms": elapsed_ms
         }
     except Exception as e:
