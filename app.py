@@ -56,7 +56,7 @@ model, model_error = load_model()
 def make_prediction(lag_1, lag_2, lag_4, lag_8, lag_12, lag_26, lag_52,
                     ma_4, ma_12, std_4, weekofyear, month, year):
     """Make prediction using the loaded model.
-    Model was trained on log1p(y) — expm1 converts back to dollar scale.
+    Model trained on log1p(y) — expm1 converts back to dollar scale.
     """
     try:
         import time
@@ -70,27 +70,19 @@ def make_prediction(lag_1, lag_2, lag_4, lag_8, lag_12, lag_26, lag_52,
             "month": month, "year": year
         }])
 
-        # Prédiction brute en espace log
-        log_pred = float(model.predict(features)[0])
-
-        # Limiter la prédiction brute pour éviter les valeurs infinies
-        log_pred = min(log_pred, 17.5)  # Limite arbitraire pour éviter des valeurs extrêmes
-
-        # Conversion en espace dollar
+        # Model trained on log1p(y) — expm1 converts back to dollar scale
+        log_pred   = float(model.predict(features)[0])
         prediction = float(np.expm1(log_pred))
 
-        # Limiter la prédiction à ±50% de la valeur de lag_1
-        prediction = max(min(prediction, lag_1 * 1.5), lag_1 * 0.5)
-
         elapsed_ms = round((time.time() - start) * 1000, 2)
-        lower = prediction * 0.90
-        upper = prediction * 1.10
+        lower      = prediction * 0.90
+        upper      = prediction * 1.10
         confidence = f"USD {lower:,.0f} - USD {upper:,.0f} (+-10% interval)"
 
         return {
-            "success": True,
-            "prediction": prediction,
-            "confidence": confidence,
+            "success":          True,
+            "prediction":       prediction,
+            "confidence":       confidence,
             "response_time_ms": elapsed_ms
         }
     except Exception as e:
@@ -115,8 +107,8 @@ st.sidebar.markdown("### 📊 Model Info")
 st.sidebar.write("**Model:** RandomForestRegressor")
 st.sidebar.write("**Features:** 13")
 st.sidebar.write("**R2 Score:** 0.3025")
-st.sidebar.write("**RMSE:** $2,034,160")
-st.sidebar.write("**MAE:** $1,472,779")
+st.sidebar.write("**RMSE:** $1,808,222")
+st.sidebar.write("**MAE:** $1,583,690")
 st.sidebar.write("**Avg Response:** ~10ms")
 
 st.sidebar.divider()
@@ -195,13 +187,11 @@ with tab1:
 
             st.success(f"✅ Predicted Next-Week Sales: **{formatted}**")
 
-            # Contextual interpretation — addresses M4 feedback
             if lag_1 > 1_000_000:
                 pct_change = ((prediction - lag_1) / lag_1) * 100
                 direction  = "above" if pct_change >= 0 else "below"
-
-                # Colour-coded banner
                 abs_change = abs(pct_change)
+
                 if abs_change <= 5:
                     st.success(f"🟢 Stable week ahead — Forecast is {abs_change:.1f}% {direction} last week. Continue routine inventory and staffing.")
                 elif pct_change > 5:
@@ -227,7 +217,6 @@ with tab1:
             with col4:
                 st.metric("Response Time", f"{result['response_time_ms']} ms")
 
-            # Save to history
             if "history" not in st.session_state:
                 st.session_state.history = []
             st.session_state.history.append({
@@ -253,9 +242,9 @@ with tab2:
     with col1:
         st.metric("R2 Score", "0.3025",     help="Higher is better (max 1.0)")
     with col2:
-        st.metric("RMSE",     "$2,034,160", help="Root Mean Squared Error")
+        st.metric("RMSE",     "$1,808,222", help="Root Mean Squared Error")
     with col3:
-        st.metric("MAE",      "$1,472,779", help="Mean Absolute Error")
+        st.metric("MAE",      "$1,583,690", help="Mean Absolute Error")
     with col4:
         st.metric("Features", "13",         help="Number of input features")
 
@@ -361,3 +350,4 @@ with col2:
     st.caption(f"Version {VERSION} | Team Dany")
 with col3:
     st.caption("Stakeholder: Retail Business Manager")
+    
