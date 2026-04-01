@@ -1,27 +1,38 @@
-# Weekly Sales Prediction App
-AIE1014 — AI Applied Project Course | Milestone 4
+# Weekly Sales Forecaster — Team Dany
+AIE1014 — AI Applied Project Course | Milestone 5
+
+## Live Application
+🔗 https://weekly-sales-forecaster-teamdany.streamlit.app/
 
 ## What This Project Does
-This application predicts weekly sales figures for retail business managers using a RandomForestRegressor model trained on 13 historical lag and moving average features. Users enter sales history values through a web interface and receive instant sales forecasts with a prediction interval to support inventory and staffing decisions.
+This application predicts next-week retail sales for a Retail Business Manager using a RandomForestRegressor model trained on 13 historical lag and moving average features. Users enter sales history values through a web interface and receive instant sales forecasts formatted in dollars with a ±10% prediction interval, percentage change vs last week, and colour-coded demand signals to support inventory and staffing decisions.
 
 **Stakeholder:** Retail Business Manager  
-**GitHub:** https://github.com/Dany281022/AppliedProject
+**GitHub:** https://github.com/Dany281022/Milestone05_TeamDany  
+**Deployed URL:** https://weekly-sales-forecaster-teamdany.streamlit.app/
 
 ## Team
-| Name | Role |
-|------|------|
-| Dany Deugoue | MLOps Engineer |
+| Name | Student ID | Role |
+|------|------------|------|
+| Dany Deugoue | A00316024 | Solo Developer / MLOps Engineer |
+
+## Architecture
+This is a single-file Streamlit application — no separate API server required.
+
+```
+[User Browser] → [Streamlit Cloud] → [app.py + model.pkl] → [Prediction Output]
+```
 
 ## Prerequisites
-- Python 3.8 or higher
+- Python 3.10 or higher
 - pip
-- Git (optional)
+- Git
 
 ## Installation
 1. Clone the repository
 ```bash
-git clone https://github.com/Dany281022/AppliedProject.git
-cd Millestone04_TeamDany
+git clone https://github.com/Dany281022/Milestone05_TeamDany.git
+cd Milestone05_TeamDany
 ```
 
 2. Create and activate a virtual environment
@@ -40,122 +51,72 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Running the Application
-
-### Step 1 — Start the API (Terminal 1)
+## Running Locally
 ```bash
-cd api
-python app.py
-```
-API runs at: http://127.0.0.1:8000  
-Interactive docs at: http://127.0.0.1:8000/docs
-
-### Step 2 — Start the UI (Terminal 2)
-```bash
-cd ui
-streamlit run app_ui.py
+streamlit run app.py
 ```
 App runs at: http://localhost:8501
 
-## Running the Tests
-```bash
-python tests/test_integration.py
-```
-Expected output: 10 passed, 0 failed
-
 ## Project Structure
 ```
-Millestone04_TeamDany/
-├── api/
-│   ├── app.py               ← FastAPI server
-│   ├── model.pkl            ← Trained RandomForestRegressor (13 features)
-│   └── requirements.txt
-├── ui/
-│   ├── app_ui.py            ← Streamlit interface with dashboard
-│   └── requirements.txt
-├── tests/
-│   ├── test_integration.py  ← Integration tests (10/10 passing)
-│   └── test_results.txt     ← Test output
+Milestone05_TeamDany/
+├── app.py               ← Combined Streamlit app + model inference
+├── model.pkl            ← Trained RandomForestRegressor (13 features, log1p)
+├── requirements.txt     ← Dependencies (no version pins for Streamlit Cloud)
+├── README.md
+├── code/
+│   ├── data_pipeline.ipynb   ← Data preprocessing pipeline
+│   └── train_model.ipynb     ← Model training and evaluation
+├── data/
+│   └── processed/       ← X_train, X_test, y_train, y_test CSV files
 ├── docs/
 │   └── TeamDany_Milestone4_Report.pdf
-├── README.md
-└── requirements.txt
-```
-
-## API Endpoints
-
-| Endpoint | Method | Description       |
-|----------|--------|-------------------|
-| /health  | GET    | Health check      |
-| /predict | POST   | Make a prediction |
-| /info    | GET    | Model information |
-
-### Example Request
-```json
-POST /predict
-{
-  "lag_1": 40000000.0,
-  "lag_2": 39000000.0,
-  "lag_4": 38000000.0,
-  "lag_8": 37000000.0,
-  "lag_12": 36000000.0,
-  "lag_26": 35000000.0,
-  "lag_52": 34000000.0,
-  "ma_4": 38500000.0,
-  "ma_12": 37000000.0,
-  "std_4": 500000.0,
-  "weekofyear": 13,
-  "month": 3,
-  "year": 2026
-}
-```
-
-### Example Response
-```json
-{
-  "prediction": 43560477.77,
-  "confidence": "USD 39,204,430 - USD 47,916,526 (+-10% interval)",
-  "status": "success",
-  "response_time_ms": 13.1
-}
+├── tests/
+│   ├── test_integration.py
+│   └── test_predict.py
+└── ui/
+    └── app_ui.py        ← Legacy Assignment04 UI (FastAPI version)
 ```
 
 ## Model Information
 - **Algorithm:** RandomForestRegressor
-- **Target:** Weekly sales figures (float)
-- **Features:** 13 (lag_1, lag_2, lag_4, lag_8, lag_12, lag_26, lag_52, ma_4, ma_12, std_4, weekofyear, month, year)
-- **RMSE:** $2,034,160
-- **MAE:** $1,472,779
-- **R2 Score:** 0.3025
-- **Tests:** 10/10 integration tests passing
-- **Average response time:** 13.1ms (model inference: ~9ms)
+- **Hyperparameters:** n_estimators=200, max_depth=None, min_samples_split=10, random_state=42
+- **Target transformation:** log1p(y) at training, expm1() at inference
+- **Features (13):** lag_1, lag_2, lag_4, lag_8, lag_12, lag_26, lag_52, ma_4, ma_12, std_4, weekofyear, month, year
+- **Dataset:** Walmart Stores Weekly Sales (Kaggle, 6,436 rows)
+- **Train/Test split:** Chronological cutoff January 1, 2012
+- **R2 Score:** 0.2829
+- **RMSE:** \$2,062,567
+- **MAE:** \$1,488,586
+- **Baseline RMSE (Naive):** \$2,481,007 (33.5% improvement)
+- **Response time:** ~10-60ms (Streamlit Cloud)
 
-## Error Codes
-| Code | Meaning |
-|------|---------|
-| 200  | Success |
-| 422  | Missing or invalid input fields |
-| 500  | Server/model error |
+## Features
+- 🔮 **Prediction Tab** — Enter 13 lag features, get instant dollar forecast
+- 📊 **Dashboard Tab** — Model performance metrics + real feature importance chart
+- 📋 **History Tab** — Track all predictions with CSV download
+- 🟢🟡🔵 **Colour-coded signals** — Stable / Higher demand / Lower demand
+- 📈 **Contextual framing** — % change vs last week + plain-language advice
 
-## Troubleshooting
-| Problem | Solution |
-|---------|----------|
-| Port already in use | Kill the process or use `--port 8001` |
-| Module not found | Run `pip install -r requirements.txt` |
-| Cannot connect to API | Make sure the API is running in Terminal 1 |
-| Model file not found | Ensure `model.pkl` is in the `api/` directory |
-| Slow response (~2s) | Use `http://127.0.0.1:8000` instead of `localhost` |
+## Deployment
+Deployed on Streamlit Cloud via GitHub integration:
+1. Push code + model.pkl to GitHub
+2. Connect repo at share.streamlit.io
+3. Set main file to app.py
+4. Streamlit Cloud auto-installs requirements.txt
 
 ## Known Issues & Limitations
-- UI requires the API running in a separate terminal before launch
-- Model trained on Walmart dataset — may not generalize to all retail contexts
-- No authentication — API is open on localhost only
-- R2 score of 0.30 indicates moderate fit — predictions are directional estimates
+- Model trained on Walmart aggregate data — predictions are directional estimates
+- R2 of 0.28 indicates moderate fit with 48 training points
+- No authentication — public access
+- Cold start on first load: ~2s (subsequent calls ~10ms)
 
-## Future Improvements
-- Deploy API to Render and UI to Streamlit Cloud for public access
-- Add more features (promotions, holidays, store location) to improve R2
-- Connect to a live database to auto-fill lag values
+## Error Handling
+| Situation | Behaviour |
+|-----------|-----------|
+| Model fails to load | Error message + app stops |
+| Invalid input | Streamlit min_value=0.0 prevents negatives |
+| Prediction error | Friendly error message displayed |
 
 ---
 AIE1014 — AI Applied Project Course | Team Dany | Winter 2026
