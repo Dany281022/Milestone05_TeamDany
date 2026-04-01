@@ -43,7 +43,6 @@ data/processed/*
 # -----------------------------
 # Models (optional if large)
 # -----------------------------
-models/*.pkl
 
 # -----------------------------
 # VS Code settings
