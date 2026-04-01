@@ -106,9 +106,9 @@ st.sidebar.divider()
 st.sidebar.markdown("### 📊 Model Info")
 st.sidebar.write("**Model:** RandomForestRegressor")
 st.sidebar.write("**Features:** 13")
-st.sidebar.write("**R2 Score:** 0.3025")
-st.sidebar.write("**RMSE:** $1,808,222")
-st.sidebar.write("**MAE:** $1,583,690")
+st.sidebar.write("**R2 Score:** 0.2829")
+st.sidebar.write("**RMSE:** $2,062,567")
+st.sidebar.write("**MAE:** $1,488,586")
 st.sidebar.write("**Avg Response:** ~10ms")
 
 st.sidebar.divider()
@@ -240,11 +240,11 @@ with tab2:
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("R2 Score", "0.3025",     help="Higher is better (max 1.0)")
+        st.metric("R2 Score", "0.2829",     help="Higher is better (max 1.0)")
     with col2:
-        st.metric("RMSE",     "$1,808,222", help="Root Mean Squared Error")
+        st.metric("RMSE",     "$2,062,567", help="Root Mean Squared Error")
     with col3:
-        st.metric("MAE",      "$1,583,690", help="Mean Absolute Error")
+        st.metric("MAE",      "$1,488,586", help="Mean Absolute Error")
     with col4:
         st.metric("Features", "13",         help="Number of input features")
 
@@ -350,4 +350,3 @@ with col2:
     st.caption(f"Version {VERSION} | Team Dany")
 with col3:
     st.caption("Stakeholder: Retail Business Manager")
-    
