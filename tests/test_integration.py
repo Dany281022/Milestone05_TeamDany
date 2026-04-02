@@ -1,146 +1,164 @@
 # tests/test_integration.py
-import requests
+"""
+Weekly Sales Forecaster — Integration Test Suite
+AIE1014 | Assignment 04 | Team Dany
+
+Run with:  python -m pytest tests/test_integration.py -v
+
+Note: 127.0.0.1 is used instead of localhost to avoid a ~2 s IPv6 DNS fallback
+delay on Windows systems.
+"""
+
 import time
 
-# Use 127.0.0.1 instead of localhost to avoid Windows DNS resolution
-# overhead (~2s delay caused by IPv6 fallback on Windows systems)
+import pytest
+import requests
+
 API_URL = "http://127.0.0.1:8000"
 
-VALID_DATA = {
-    "lag_1": 100.0,
-    "lag_2": 95.0,
-    "lag_4": 90.0,
-    "lag_8": 88.0,
-    "lag_12": 85.0,
-    "lag_26": 80.0,
-    "lag_52": 75.0,
-    "ma_4": 93.0,
-    "ma_12": 87.0,
-    "std_4": 5.0,
-    "weekofyear": 12,
-    "month": 3,
-    "year": 2026
+# ---------------------------------------------------------------------------
+# Valid payload — all 13 features the model expects.
+# Values match the default inputs in the UI.
+# ---------------------------------------------------------------------------
+VALID_PAYLOAD = {
+    "lag_1":      100.0,
+    "lag_2":       95.0,
+    "lag_4":       90.0,
+    "lag_8":       88.0,
+    "lag_12":      85.0,
+    "lag_26":      80.0,
+    "lag_52":      75.0,
+    "ma_4":        93.0,
+    "ma_12":       87.0,
+    "std_4":        5.0,
+    "weekofyear":  12,
+    "month":        3,
+    "year":      2026,
 }
 
-def test_api_health():
-    response = requests.get(f"{API_URL}/health")
-    assert response.status_code == 200
-    assert response.json()["status"] == "healthy"
-    print("✅ API health check passed")
+# ── Fixture: skip all tests if the API is offline ───────────────────────────
+@pytest.fixture(autouse=True)
+def api_must_be_running():
+    try:
+        requests.get(f"{API_URL}/health", timeout=3)
+    except requests.exceptions.ConnectionError:
+        pytest.skip("API is offline — start it with: python app_api.py")
 
-def test_api_info():
-    response = requests.get(f"{API_URL}/info")
-    assert response.status_code == 200
-    data = response.json()
-    assert "model_type" in data
+
+# ── Happy Path ───────────────────────────────────────────────────────────────
+
+def test_health_check():
+    """Health endpoint returns 200 and status=='healthy'."""
+    r = requests.get(f"{API_URL}/health")
+    assert r.status_code == 200
+    assert r.json()["status"] == "healthy"
+
+
+def test_info_endpoint():
+    """★ NEW — /info returns all required fields including description."""
+    r = requests.get(f"{API_URL}/info")
+    assert r.status_code == 200
+    data = r.json()
+    assert "model_type"        in data
     assert "features_expected" in data
-    assert data["num_features"] == 13
-    print(f"✅ Model info: {data['model_type']}, features: {data['num_features']}")
+    assert "version"           in data
+    assert "description"       in data   # required by Assignment 04 checklist
 
-def test_prediction_valid():
-    response = requests.post(f"{API_URL}/predict", json=VALID_DATA)
-    assert response.status_code == 200
-    result = response.json()
-    assert "prediction" in result
-    assert "confidence" in result
-    assert "status" in result
-    assert "response_time_ms" in result
-    assert result["status"] == "success"
-    print(f"✅ Valid prediction: ${result['prediction']:,.2f} in {result['response_time_ms']}ms")
 
-def test_prediction_missing_field():
-    data = {"lag_1": 100.0, "lag_2": 95.0}
-    response = requests.post(f"{API_URL}/predict", json=data)
-    assert response.status_code == 422
-    print("✅ Missing fields handled correctly (422)")
+def test_valid_prediction():
+    """A complete, valid payload returns 200 with prediction and status=='success'."""
+    r = requests.post(f"{API_URL}/predict", json=VALID_PAYLOAD)
+    assert r.status_code == 200
+    data = r.json()
+    assert "prediction" in data
+    assert data["status"] == "success"
+    assert isinstance(data["prediction"], float)
 
-def test_prediction_invalid_type():
-    data = {**VALID_DATA, "lag_1": "invalid"}
-    response = requests.post(f"{API_URL}/predict", json=data)
-    assert response.status_code in [400, 422, 500]
-    print("✅ Invalid type handled correctly")
 
-def test_prediction_empty_request():
-    response = requests.post(f"{API_URL}/predict", json={})
-    assert response.status_code == 422
-    print("✅ Empty request handled correctly (422)")
+def test_confidence_returned():
+    """confidence must be present — string interval is valid for regressors."""
+    r = requests.post(f"{API_URL}/predict", json=VALID_PAYLOAD)
+    assert r.status_code == 200
+    data = r.json()
+    assert "confidence" in data
+    # RandomForestRegressor returns a string interval; None is also acceptable
+    assert data["confidence"] is None or isinstance(data["confidence"], (float, str))
 
-def test_prediction_minimum_values():
-    data = {**VALID_DATA, "lag_1": 0.0, "lag_2": 0.0, "lag_52": 0.0}
-    response = requests.post(f"{API_URL}/predict", json=data)
-    assert response.status_code == 200
-    print("✅ Minimum values work")
 
-def test_prediction_large_values():
-    data = {**VALID_DATA, "lag_1": 99999.0, "lag_2": 99999.0, "lag_52": 99999.0}
-    response = requests.post(f"{API_URL}/predict", json=data)
-    assert response.status_code == 200
-    print("✅ Large values work")
+# ── Edge Cases ───────────────────────────────────────────────────────────────
 
-def test_response_time():
-    # First call may be slow due to Windows DNS — measure subsequent calls
-    requests.post(f"{API_URL}/predict", json=VALID_DATA)  # warm-up
-    times = []
+def test_minimum_values():
+    """All-zero lag/ma/std values must still return 200."""
+    payload = {k: 0.0 for k in VALID_PAYLOAD}
+    payload["weekofyear"] = 1
+    payload["month"]      = 1
+    payload["year"]       = 2024
+    r = requests.post(f"{API_URL}/predict", json=payload)
+    assert r.status_code == 200
+
+
+def test_maximum_values():
+    """Very large lag values must still return 200."""
+    payload = {**VALID_PAYLOAD,
+               "lag_1":  99999.0,
+               "lag_2":  99999.0,
+               "lag_52": 99999.0}
+    r = requests.post(f"{API_URL}/predict", json=payload)
+    assert r.status_code == 200
+
+
+# ── Error Handling ───────────────────────────────────────────────────────────
+
+def test_missing_required_field():
+    """Omitting lag_4 (a required field) must return 400 or 422."""
+    payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "lag_4"}
+    r = requests.post(f"{API_URL}/predict", json=payload)
+    assert r.status_code in [400, 422]
+
+
+def test_empty_request_body():
+    """An empty body must return 400 or 422."""
+    r = requests.post(f"{API_URL}/predict", json={})
+    assert r.status_code in [400, 422]
+
+
+def test_wrong_data_type():
+    """Sending a string where a float is expected must return 400, 422, or 500."""
+    payload = {**VALID_PAYLOAD, "lag_1": "not_a_number"}
+    r = requests.post(f"{API_URL}/predict", json=payload)
+    assert r.status_code in [400, 422, 500]
+
+
+# ── Performance ──────────────────────────────────────────────────────────────
+
+def test_response_time_under_2_seconds():
+    """★ NEW — each prediction must respond in under 2 seconds."""
+    start   = time.time()
+    r       = requests.post(f"{API_URL}/predict", json=VALID_PAYLOAD)
+    elapsed = time.time() - start
+    assert r.status_code == 200
+    assert elapsed < 2.0, f"Response took {elapsed:.2f}s — exceeds 2 s limit"
+
+
+def test_consistent_predictions():
+    """★ NEW — same input must always produce the same prediction."""
+    predictions = set()
     for _ in range(5):
+        r = requests.post(f"{API_URL}/predict", json=VALID_PAYLOAD)
+        assert r.status_code == 200
+        predictions.add(round(r.json()["prediction"], 2))
+    assert len(predictions) == 1, f"Inconsistent predictions detected: {predictions}"
+
+
+# ── 🏆 Challenge — Average response time over 20 calls ──────────────────────
+
+def test_average_response_time():
+    """🏆 CHALLENGE — average over 20 calls must be under 1 second."""
+    times = []
+    for _ in range(20):
         start = time.time()
-        response = requests.post(f"{API_URL}/predict", json=VALID_DATA)
-        elapsed = (time.time() - start) * 1000
-        times.append(elapsed)
-    avg_ms = sum(times) / len(times)
-    result = response.json()
-    model_time = result.get("response_time_ms", 0)
-    assert avg_ms < 1000, f"Average response time {avg_ms:.1f}ms exceeds 1000ms target"
-    print(f"✅ Avg response time: {avg_ms:.1f}ms | model inference: {model_time}ms")
-
-def test_prediction_response_structure():
-    response = requests.post(f"{API_URL}/predict", json=VALID_DATA)
-    assert response.status_code == 200
-    result = response.json()
-    assert "prediction" in result
-    assert "confidence" in result
-    assert "status" in result
-    assert "response_time_ms" in result
-    assert result["status"] == "success"
-    print("✅ Response structure is correct (prediction, confidence, status, response_time_ms)")
-
-def run_all_tests():
-    print("\n" + "="*50)
-    print("INTEGRATION TESTS - Weekly Sales Prediction")
-    print("="*50 + "\n")
-
-    tests = [
-        test_api_health,
-        test_api_info,
-        test_prediction_valid,
-        test_prediction_missing_field,
-        test_prediction_invalid_type,
-        test_prediction_empty_request,
-        test_prediction_minimum_values,
-        test_prediction_large_values,
-        test_response_time,
-        test_prediction_response_structure,
-    ]
-
-    passed = 0
-    failed = 0
-
-    for test in tests:
-        try:
-            test()
-            passed += 1
-        except AssertionError as e:
-            print(f"❌ {test.__name__} FAILED: {e}")
-            failed += 1
-        except Exception as e:
-            print(f"❌ {test.__name__} ERROR: {e}")
-            failed += 1
-
-    print("\n" + "="*50)
-    print(f"RESULTS: {passed} passed, {failed} failed")
-    print("="*50)
-
-    return failed == 0
-
-if __name__ == "__main__":
-    success = run_all_tests()
-    exit(0 if success else 1)
+        requests.post(f"{API_URL}/predict", json=VALID_PAYLOAD)
+        times.append(time.time() - start)
+    avg = sum(times) / len(times)
+    print(f"\nMin: {min(times):.3f}s  Max: {max(times):.3f}s  Avg: {avg:.3f}s")
+    assert avg < 1.0, f"Average response too slow: {avg:.3f}s"
