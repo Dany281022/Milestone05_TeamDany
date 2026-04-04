@@ -6,3 +6,6 @@ pmdarima
 joblib
 plotly
 httpx
+openai
+python-dotenv
+ollama
