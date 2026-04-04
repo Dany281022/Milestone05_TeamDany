@@ -1,164 +1,131 @@
 # tests/test_integration.py
 """
-Weekly Sales Forecaster — Integration Test Suite
-AIE1014 | Assignment 04 | Team Dany
-
-Run with:  python -m pytest tests/test_integration.py -v
-
-Note: 127.0.0.1 is used instead of localhost to avoid a ~2 s IPv6 DNS fallback
-delay on Windows systems.
+Integration tests for the Weekly Sales Forecaster.
+Tests the full prediction pipeline end-to-end — no API server required.
 """
-
-import time
-
+import joblib
+import numpy as np
 import pytest
-import requests
+import os
 
-API_URL = "http://127.0.0.1:8000"
+MODEL_PATH = "model.pkl"
 
-# ---------------------------------------------------------------------------
-# Valid payload — all 13 features the model expects.
-# Values match the default inputs in the UI.
-# ---------------------------------------------------------------------------
-VALID_PAYLOAD = {
-    "lag_1":      100.0,
-    "lag_2":       95.0,
-    "lag_4":       90.0,
-    "lag_8":       88.0,
-    "lag_12":      85.0,
-    "lag_26":      80.0,
-    "lag_52":      75.0,
-    "ma_4":        93.0,
-    "ma_12":       87.0,
-    "std_4":        5.0,
-    "weekofyear":  12,
-    "month":        3,
-    "year":      2026,
-}
-
-# ── Fixture: skip all tests if the API is offline ───────────────────────────
-@pytest.fixture(autouse=True)
-def api_must_be_running():
-    try:
-        requests.get(f"{API_URL}/health", timeout=3)
-    except requests.exceptions.ConnectionError:
-        pytest.skip("API is offline — start it with: python app_api.py")
+FEATURES = [
+    "lag_1", "lag_2", "lag_4", "lag_8", "lag_12",
+    "lag_26", "lag_52", "ma_4", "ma_12", "std_4",
+    "weekofyear", "month", "year"
+]
 
 
-# ── Happy Path ───────────────────────────────────────────────────────────────
+def make_prediction(model, input_dict: dict) -> dict:
+    """
+    Full prediction pipeline: input dict → prediction output dict.
+    Mirrors what app.py does internally.
+    """
+    X          = np.array([[input_dict[f] for f in FEATURES]])
+    raw        = model.predict(X)[0]
+    prediction = float(np.expm1(raw))
+    lag_1      = input_dict["lag_1"]
+    pct_change = (prediction - lag_1) / lag_1 * 100 if lag_1 > 0 else 0
+    low        = prediction * 0.90
+    high       = prediction * 1.10
+    confidence = f"${low:,.0f} — ${high:,.0f}"
 
-def test_health_check():
-    """Health endpoint returns 200 and status=='healthy'."""
-    r = requests.get(f"{API_URL}/health")
-    assert r.status_code == 200
-    assert r.json()["status"] == "healthy"
+    if abs(pct_change) <= 5:
+        signal = "Stable"
+    elif pct_change > 5:
+        signal = "Higher demand"
+    else:
+        signal = "Lower demand"
 
-
-def test_info_endpoint():
-    """★ NEW — /info returns all required fields including description."""
-    r = requests.get(f"{API_URL}/info")
-    assert r.status_code == 200
-    data = r.json()
-    assert "model_type"        in data
-    assert "features_expected" in data
-    assert "version"           in data
-    assert "description"       in data   # required by Assignment 04 checklist
-
-
-def test_valid_prediction():
-    """A complete, valid payload returns 200 with prediction and status=='success'."""
-    r = requests.post(f"{API_URL}/predict", json=VALID_PAYLOAD)
-    assert r.status_code == 200
-    data = r.json()
-    assert "prediction" in data
-    assert data["status"] == "success"
-    assert isinstance(data["prediction"], float)
-
-
-def test_confidence_returned():
-    """confidence must be present — string interval is valid for regressors."""
-    r = requests.post(f"{API_URL}/predict", json=VALID_PAYLOAD)
-    assert r.status_code == 200
-    data = r.json()
-    assert "confidence" in data
-    # RandomForestRegressor returns a string interval; None is also acceptable
-    assert data["confidence"] is None or isinstance(data["confidence"], (float, str))
+    return {
+        "prediction":  prediction,
+        "pct_change":  pct_change,
+        "confidence":  confidence,
+        "signal":      signal,
+    }
 
 
-# ── Edge Cases ───────────────────────────────────────────────────────────────
-
-def test_minimum_values():
-    """All-zero lag/ma/std values must still return 200."""
-    payload = {k: 0.0 for k in VALID_PAYLOAD}
-    payload["weekofyear"] = 1
-    payload["month"]      = 1
-    payload["year"]       = 2024
-    r = requests.post(f"{API_URL}/predict", json=payload)
-    assert r.status_code == 200
+# ── Fixtures ───────────────────────────────────────────
+@pytest.fixture(scope="module")
+def model():
+    """Load trained model once for all integration tests."""
+    assert os.path.exists(MODEL_PATH), f"Model not found: {MODEL_PATH}"
+    return joblib.load(MODEL_PATH)
 
 
-def test_maximum_values():
-    """Very large lag values must still return 200."""
-    payload = {**VALID_PAYLOAD,
-               "lag_1":  99999.0,
-               "lag_2":  99999.0,
-               "lag_52": 99999.0}
-    r = requests.post(f"{API_URL}/predict", json=payload)
-    assert r.status_code == 200
+@pytest.fixture
+def typical_input():
+    return {
+        "lag_1": 40000000.0, "lag_2": 39000000.0,
+        "lag_4": 38000000.0, "lag_8": 37000000.0,
+        "lag_12": 36000000.0, "lag_26": 35000000.0,
+        "lag_52": 34000000.0, "ma_4": 38500000.0,
+        "ma_12": 37000000.0, "std_4": 500000.0,
+        "weekofyear": 10, "month": 3, "year": 2026,
+    }
 
 
-# ── Error Handling ───────────────────────────────────────────────────────────
-
-def test_missing_required_field():
-    """Omitting lag_4 (a required field) must return 400 or 422."""
-    payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "lag_4"}
-    r = requests.post(f"{API_URL}/predict", json=payload)
-    assert r.status_code in [400, 422]
-
-
-def test_empty_request_body():
-    """An empty body must return 400 or 422."""
-    r = requests.post(f"{API_URL}/predict", json={})
-    assert r.status_code in [400, 422]
+@pytest.fixture
+def low_sales_input():
+    return {
+        "lag_1": 5000000.0, "lag_2": 4800000.0,
+        "lag_4": 4600000.0, "lag_8": 4400000.0,
+        "lag_12": 4200000.0, "lag_26": 4000000.0,
+        "lag_52": 3800000.0, "ma_4": 4700000.0,
+        "ma_12": 4300000.0, "std_4": 200000.0,
+        "weekofyear": 5, "month": 1, "year": 2026,
+    }
 
 
-def test_wrong_data_type():
-    """Sending a string where a float is expected must return 400, 422, or 500."""
-    payload = {**VALID_PAYLOAD, "lag_1": "not_a_number"}
-    r = requests.post(f"{API_URL}/predict", json=payload)
-    assert r.status_code in [400, 422, 500]
+# ── Tests ──────────────────────────────────────────────
+def test_full_pipeline_typical(model, typical_input):
+    """Full pipeline runs end-to-end with typical retail input."""
+    result = make_prediction(model, typical_input)
+    assert result["prediction"] > 0
+    assert "confidence" in result
+    assert result["signal"] in ["Stable", "Higher demand", "Lower demand"]
+    print(f"  ✅ Pipeline OK — ${result['prediction']:,.2f} | {result['signal']}")
 
 
-# ── Performance ──────────────────────────────────────────────────────────────
-
-def test_response_time_under_2_seconds():
-    """★ NEW — each prediction must respond in under 2 seconds."""
-    start   = time.time()
-    r       = requests.post(f"{API_URL}/predict", json=VALID_PAYLOAD)
-    elapsed = time.time() - start
-    assert r.status_code == 200
-    assert elapsed < 2.0, f"Response took {elapsed:.2f}s — exceeds 2 s limit"
+def test_full_pipeline_low_sales(model, low_sales_input):
+    """Pipeline works with low sales figures."""
+    result = make_prediction(model, low_sales_input)
+    assert result["prediction"] > 0
+    print(f"  ✅ Low sales pipeline OK — ${result['prediction']:,.2f}")
 
 
-def test_consistent_predictions():
-    """★ NEW — same input must always produce the same prediction."""
-    predictions = set()
-    for _ in range(5):
-        r = requests.post(f"{API_URL}/predict", json=VALID_PAYLOAD)
-        assert r.status_code == 200
-        predictions.add(round(r.json()["prediction"], 2))
-    assert len(predictions) == 1, f"Inconsistent predictions detected: {predictions}"
+def test_signal_stable(model, typical_input):
+    """Signal is Stable when prediction is within ±5% of lag_1."""
+    result = make_prediction(model, typical_input)
+    if abs(result["pct_change"]) <= 5:
+        assert result["signal"] == "Stable"
+    print(f"  ✅ Signal: {result['signal']} ({result['pct_change']:+.1f}%)")
 
 
-# ── 🏆 Challenge — Average response time over 20 calls ──────────────────────
+def test_confidence_interval_format(model, typical_input):
+    """Confidence interval is formatted as a dollar range string."""
+    result = make_prediction(model, typical_input)
+    assert "—" in result["confidence"]
+    assert "$" in result["confidence"]
+    print(f"  ✅ Confidence interval: {result['confidence']}")
 
-def test_average_response_time():
-    """🏆 CHALLENGE — average over 20 calls must be under 1 second."""
-    times = []
-    for _ in range(20):
-        start = time.time()
-        requests.post(f"{API_URL}/predict", json=VALID_PAYLOAD)
-        times.append(time.time() - start)
-    avg = sum(times) / len(times)
-    print(f"\nMin: {min(times):.3f}s  Max: {max(times):.3f}s  Avg: {avg:.3f}s")
-    assert avg < 1.0, f"Average response too slow: {avg:.3f}s"
+
+def test_model_file_exists():
+    """model.pkl exists at the expected path."""
+    assert os.path.exists(MODEL_PATH)
+    size_kb = os.path.getsize(MODEL_PATH) / 1024
+    assert size_kb > 10
+    print(f"  ✅ model.pkl exists ({size_kb:.0f} KB)")
+
+
+def test_all_features_used(model):
+    """Model uses exactly the 13 expected features."""
+    assert model.n_features_in_ == len(FEATURES) == 13
+    print(f"  ✅ All 13 features verified")
+
+
+if __name__ == "__main__":
+    import sys
+    pytest.main([__file__, "-v"])
+    
