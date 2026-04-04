@@ -5,3 +5,4 @@ scikit-learn
 pmdarima
 joblib
 plotly
+httpx
