@@ -1,7 +1,7 @@
 # api/main.py
 """
 FastAPI — Weekly Sales Forecaster
-Serves the dashboard frontend + REST prediction endpoint.
+Serves dashboard + REST prediction + LLM explanation.
 Deployed on Render.
 """
 import os
@@ -17,22 +17,22 @@ from pydantic import BaseModel
 from prometheus_fastapi_instrumentator import Instrumentator
 
 app = FastAPI(
-    title="Weekly Sales Forecaster API",
-    description="RandomForest model predicting next-week retail sales",
-    version="2.0.0",
+    title       = "Weekly Sales Forecaster API",
+    description = "RandomForest + LLM insights for retail sales prediction",
+    version     = "3.0.0",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins = ["*"],
+    allow_methods = ["*"],
+    allow_headers = ["*"],
 )
 
 Instrumentator().instrument(app).expose(app)
 
 # ── Model ──────────────────────────────────────────────
-MODEL_PATH = "model.pkl"
+MODEL_PATH = os.getenv("MODEL_PATH", "model.pkl")
 FEATURES   = [
     "lag_1", "lag_2", "lag_4", "lag_8", "lag_12",
     "lag_26", "lag_52", "ma_4", "ma_12", "std_4",
@@ -47,7 +47,7 @@ def load_model() -> None:
     global model
     try:
         model = joblib.load(MODEL_PATH)
-        print(f"[API] Model loaded — {model.n_estimators} trees, {model.n_features_in_} features")
+        print(f"[API] Model loaded — {model.n_estimators} trees")
     except FileNotFoundError:
         print(f"[API] WARNING: {MODEL_PATH} not found")
 
@@ -76,11 +76,24 @@ class PredictResponse(BaseModel):
     signal:           str
     response_time_ms: float
 
+class ExplainRequest(BaseModel):
+    prediction:  float
+    pct_change:  float
+    signal:      str
+    lag_1:       float
+    weekofyear:  int
+    month:       int
+
+class ExplainResponse(BaseModel):
+    explanation: str
+    provider:    str
+
 class HealthResponse(BaseModel):
     status:       str
     model_loaded: bool
     n_estimators: int
     r2_score:     float
+    llm_ready:    bool
 
 
 # ── Endpoints ──────────────────────────────────────────
@@ -92,6 +105,7 @@ def health() -> HealthResponse:
         model_loaded = model is not None,
         n_estimators = model.n_estimators if model else 0,
         r2_score     = 0.2829,
+        llm_ready    = bool(os.getenv("OPENAI_API_KEY", "")),
     )
 
 
@@ -99,14 +113,13 @@ def health() -> HealthResponse:
 def predict(request: PredictRequest) -> PredictResponse:
     """
     Predict next-week retail sales from 13 lag features.
-    Model trained on log1p(y) — response is in dollar scale via expm1.
+    Model trained on log1p(y) — response in dollar scale via expm1.
     """
     if model is None:
         raise HTTPException(status_code=503, detail="Model not loaded.")
     try:
-        start = time.time()
-
-        X = pd.DataFrame([request.model_dump()])[FEATURES]
+        start      = time.time()
+        X          = pd.DataFrame([request.model_dump()])[FEATURES]
         raw        = model.predict(X)[0]
         prediction = float(np.expm1(raw))
         elapsed_ms = round((time.time() - start) * 1000, 2)
@@ -136,19 +149,39 @@ def predict(request: PredictRequest) -> PredictResponse:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/explain", response_model=ExplainResponse, tags=["LLM"])
+def explain(request: ExplainRequest) -> ExplainResponse:
+    """
+    Generate LLM-powered business explanation for the sales forecast.
+    Uses OpenAI with automatic Ollama fallback.
+    """
+    try:
+        from src.llm_client import call_llm, build_sales_prompt
+        prompt      = build_sales_prompt(
+            prediction = request.prediction,
+            pct_change = request.pct_change,
+            signal     = request.signal,
+            lag_1      = request.lag_1,
+            weekofyear = request.weekofyear,
+            month      = request.month,
+        )
+        explanation = call_llm(prompt)
+        provider    = "OpenAI" if os.getenv("OPENAI_API_KEY") else "Ollama"
+        return ExplainResponse(explanation=explanation, provider=provider)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/info", tags=["Monitoring"])
 def info() -> dict:
     """Return model metadata."""
     return {
-        "model_type":   "RandomForestRegressor",
+        "model_type":  "RandomForestRegressor",
         "num_features": 13,
-        "features":     FEATURES,
-        "performance": {
-            "r2":   0.2829,
-            "rmse": 2062567,
-            "mae":  1488586,
-        },
-        "version": "2.0.0",
+        "features":    FEATURES,
+        "performance": {"r2": 0.2829, "rmse": 2062567, "mae": 1488586},
+        "version":     "3.0.0",
+        "llm_support": True,
     }
 
 

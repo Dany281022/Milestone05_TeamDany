@@ -6,3 +6,5 @@ pandas
 scikit-learn
 python-dotenv
 prometheus-fastapi-instrumentator
+openai
+httpx
