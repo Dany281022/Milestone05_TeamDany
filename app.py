@@ -132,11 +132,12 @@ else:
 st.sidebar.divider()
 
 st.sidebar.markdown("### 📊 Model Info")
-st.sidebar.write("**Model:** RandomForestRegressor")
+st.sidebar.write("**Model:** RandomForestRegressor v2")
+st.sidebar.write("**Training:** Per-store features")
 st.sidebar.write("**Features:** 13")
-st.sidebar.write("**R2 Score:** 0.2829")
-st.sidebar.write("**RMSE:** $2,062,567")
-st.sidebar.write("**MAE:** $1,488,586")
+st.sidebar.write("**R2 Score:** 0.9812")
+st.sidebar.write("**RMSE:** $73,473")
+st.sidebar.write("**MAE:** $47,281")
 st.sidebar.write("**Avg Response:** ~10ms")
 
 st.sidebar.divider()
@@ -175,23 +176,23 @@ with tab1:
         st.markdown("#### Lag Features")
         col1, col2 = st.columns(2)
         with col1:
-            lag_1  = st.number_input("Lag 1 — Previous week ($)",  min_value=0.0, value=40000000.0)
-            lag_4  = st.number_input("Lag 4 — 4 weeks ago ($)",    min_value=0.0, value=38000000.0)
-            lag_12 = st.number_input("Lag 12 — 12 weeks ago ($)",  min_value=0.0, value=36000000.0)
-            lag_52 = st.number_input("Lag 52 — 1 year ago ($)",    min_value=0.0, value=34000000.0)
+            lag_1  = st.number_input("Lag 1 — Previous week ($)",  min_value=0.0, value=1500000.0)
+            lag_4  = st.number_input("Lag 4 — 4 weeks ago ($)",    min_value=0.0, value=1450000.0)
+            lag_12 = st.number_input("Lag 12 — 12 weeks ago ($)",  min_value=0.0, value=1400000.0)
+            lag_52 = st.number_input("Lag 52 — 1 year ago ($)",    min_value=0.0, value=1380000.0)
         with col2:
-            lag_2  = st.number_input("Lag 2 — 2 weeks ago ($)",    min_value=0.0, value=39000000.0)
-            lag_8  = st.number_input("Lag 8 — 8 weeks ago ($)",    min_value=0.0, value=37000000.0)
-            lag_26 = st.number_input("Lag 26 — 26 weeks ago ($)",  min_value=0.0, value=35000000.0)
+            lag_2  = st.number_input("Lag 2 — 2 weeks ago ($)",    min_value=0.0, value=1480000.0)
+            lag_8  = st.number_input("Lag 8 — 8 weeks ago ($)",    min_value=0.0, value=1430000.0)
+            lag_26 = st.number_input("Lag 26 — 26 weeks ago ($)",  min_value=0.0, value=1390000.0)
 
         st.markdown("#### Moving Averages & Volatility")
         col3, col4, col5 = st.columns(3)
         with col3:
-            ma_4  = st.number_input("MA 4 weeks ($)",  min_value=0.0, value=38500000.0)
+            ma_4  = st.number_input("MA 4 weeks ($)",  min_value=0.0, value=1465000.0)
         with col4:
-            ma_12 = st.number_input("MA 12 weeks ($)", min_value=0.0, value=37000000.0)
+            ma_12 = st.number_input("MA 12 weeks ($)", min_value=0.0, value=1430000.0)
         with col5:
-            std_4 = st.number_input("Std Dev 4 weeks", min_value=0.0, value=500000.0)
+            std_4 = st.number_input("Std Dev 4 weeks", min_value=0.0, value=25000.0)
 
         st.markdown("#### Date Features (Auto-filled)")
         col6, col7, col8 = st.columns(3)
@@ -216,7 +217,7 @@ with tab1:
             formatted  = f"${prediction:,.2f}"
             st.success(f"✅ Predicted Next-Week Sales: **{formatted}**")
 
-            if lag_1 > 1_000_000:
+            if lag_1 > 0:
                 pct_change = ((prediction - lag_1) / lag_1) * 100
                 direction  = "above" if pct_change >= 0 else "below"
                 abs_change = abs(pct_change)
@@ -239,7 +240,7 @@ with tab1:
             col1, col2, col3, col4 = st.columns(4)
             with col1: st.metric("Forecast",      formatted)
             with col2: st.metric("Week",          f"W{weekofyear}")
-            with col3: st.metric("Model",         "Random Forest")
+            with col3: st.metric("Model",         "RF v2")
             with col4: st.metric("Response Time", f"{result['response_time_ms']} ms")
 
             if "history" not in st.session_state:
@@ -265,11 +266,31 @@ with tab1:
 with tab2:
     st.markdown("### 📊 Model Performance Dashboard")
 
-    col1, col2, col3, col4 = st.columns(4)
-    with col1: st.metric("R2 Score", "0.2829",     help="Higher is better (max 1.0)")
-    with col2: st.metric("RMSE",     "$2,062,567", help="Root Mean Squared Error")
-    with col3: st.metric("MAE",      "$1,488,586", help="Mean Absolute Error")
-    with col4: st.metric("Features", "13",         help="Number of input features")
+    # Model v1 vs v2 comparison
+    st.markdown("#### 📈 Model Improvement: v1 → v2")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("R² Score", "0.9812", delta="+246.9% vs v1",
+                  help="v1 was 0.2829 — per-store features made the difference")
+    with col2:
+        st.metric("RMSE", "$73,473", delta="-$1,989,094 vs v1",
+                  help="v1 was $2,062,567")
+    with col3:
+        st.metric("MAE", "$47,281", delta="-$1,441,305 vs v1",
+                  help="v1 was $1,488,586")
+
+    col4, col5, col6 = st.columns(3)
+    with col4:
+        st.metric("Features",      "13",           help="Same 13 lag features")
+    with col5:
+        st.metric("Training rows", "2,160",        help="Per-store: 45 stores × ~48 weeks")
+    with col6:
+        st.metric("Test rows",     "1,935",        help="Chronological split Jan 2012")
+
+    st.info(
+        "**Key insight:** Training per-store instead of aggregating across all 45 stores "
+        "revealed individual store patterns — this single change improved R² from 0.28 to 0.98."
+    )
 
     st.divider()
     st.markdown("#### 🎯 Feature Importance")
@@ -282,7 +303,7 @@ with tab2:
 
             fig_imp = px.bar(
                 df_imp, x="Importance", y="Feature", orientation="h",
-                title="Feature Importance — Random Forest",
+                title="Feature Importance — RandomForest v2 (per-store)",
                 color="Importance", color_continuous_scale="blues",
                 text="Importance"
             )
@@ -407,9 +428,9 @@ with tab4:
 
         col1, col2 = st.columns(2)
         with col1:
-            ref_sales = st.number_input("Reference sales ($)", value=40000000.0, step=1000000.0)
+            ref_sales = st.number_input("Reference sales ($)", value=1500000.0, step=50000.0)
         with col2:
-            ref_pct   = st.number_input("Expected % change",   value=10.0,       step=1.0)
+            ref_pct   = st.number_input("Expected % change",   value=10.0,      step=1.0)
 
         if st.button("💬 Ask AI", use_container_width=True) and question:
             with st.spinner("Thinking..."):
@@ -443,7 +464,7 @@ Answer in 3-5 sentences. Be practical, specific, and use dollar amounts where re
                     pct  = last.get("% vs Last Week", 0)
                     with st.spinner("Generating..."):
                         try:
-                            prompt = f"""As a retail analyst, give 3 specific inventory recommendations for a store expecting {pct:+.1f}% change in sales next week (current: ${last['Prediction ($)']:,.0f}). Be brief and actionable."""
+                            prompt = f"""As a retail analyst, give 3 specific inventory recommendations for a store expecting {pct:+.1f}% change in sales next week (forecast: ${last['Prediction ($)']:,.0f}). Be brief and actionable."""
                             st.info(call_llm(prompt))
                         except Exception as e:
                             st.error(str(e))
@@ -457,7 +478,7 @@ Answer in 3-5 sentences. Be practical, specific, and use dollar amounts where re
                     pct  = last.get("% vs Last Week", 0)
                     with st.spinner("Generating..."):
                         try:
-                            prompt = f"""As a retail analyst, give 3 specific staffing recommendations for a store expecting {pct:+.1f}% change in sales next week. Be brief and actionable."""
+                            prompt = f"""As a retail analyst, give 3 specific staffing recommendations for a store expecting {pct:+.1f}% change in sales next week (forecast: ${last['Prediction ($)']:,.0f}). Be brief and actionable."""
                             st.info(call_llm(prompt))
                         except Exception as e:
                             st.error(str(e))
@@ -471,7 +492,7 @@ Answer in 3-5 sentences. Be practical, specific, and use dollar amounts where re
                     pct  = last.get("% vs Last Week", 0)
                     with st.spinner("Generating..."):
                         try:
-                            prompt = f"""As a retail analyst, identify the top 3 risks for a store forecasting {pct:+.1f}% sales change next week. Be brief and specific."""
+                            prompt = f"""As a retail analyst, identify the top 3 risks for a store forecasting {pct:+.1f}% sales change next week (forecast: ${last['Prediction ($)']:,.0f}). Be brief and specific."""
                             st.warning(call_llm(prompt))
                         except Exception as e:
                             st.error(str(e))
@@ -484,6 +505,6 @@ Answer in 3-5 sentences. Be practical, specific, and use dollar amounts where re
 
 st.divider()
 col1, col2, col3 = st.columns(3)
-with col1: st.caption("AIE1014 Capstone Project | AIE1017 LLM Integration")
+with col1: st.caption("AIE1014 Capstone | AIE1017 LLM Integration")
 with col2: st.caption(f"Version {VERSION} | Team Dany")
 with col3: st.caption("Stakeholder: Retail Business Manager")
