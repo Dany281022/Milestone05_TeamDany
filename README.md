@@ -1,122 +1,286 @@
 # Weekly Sales Forecaster — Team Dany
-AIE1014 — AI Applied Project Course | Milestone 5
 
-## Live Application
-🔗 https://weekly-sales-forecaster-teamdany.streamlit.app/
+AIE1014 — AI Applied Project Course | AIE1017 — Generative AI and LLMs | Winter 2026
+
+---
+
+## Impact
+
+Training one model per store (45 models) instead of one aggregated model reduced RMSE by **96.4%** and pushed R² from 0.28 to **0.9812**.
+
+| Metric | v1 — aggregated | v2 — per-store | Gain |
+|--------|-----------------|----------------|------|
+| R²     | 0.2829          | 0.9812         | +246.9% |
+| RMSE   | $2,062,567      | $73,473        | -96.4% |
+| MAE    | $1,488,586      | $47,281        | -96.8% |
+
+Root cause of v1 failure: aggregating 45 stores into 143 weekly rows erased store-level patterns. Training per-store fixes this.
+
+---
+
+## Live Applications
+
+| Interface | URL |
+|-----------|-----|
+| Streamlit | https://weekly-sales-forecaster-teamdany.streamlit.app/ |
+| Render API | https://weekly-sales-forecaster-team-dany-aie1014.onrender.com |
+| GitHub | https://github.com/Dany281022/Milestone05_TeamDany |
+
+---
 
 ## What This Project Does
-This application predicts next-week retail sales for a Retail Business Manager using a RandomForestRegressor model trained on 13 historical lag and moving average features. Users enter sales history values through a web interface and receive instant sales forecasts formatted in dollars with a ±10% prediction interval, percentage change vs last week, and colour-coded demand signals to support inventory and staffing decisions.
+
+Predicts next-week retail sales for a Retail Business Manager.
+
+The model is a RandomForestRegressor (v2) trained per-store on 13 lag and moving average features. Users input sales history through a web interface and receive an instant dollar forecast with a ±10% prediction interval, percentage change vs last week, colour-coded demand signals, and business recommendations via OpenAI GPT-4o-mini (Ollama fallback included).
 
 **Stakeholder:** Retail Business Manager  
-**GitHub:** https://github.com/Dany281022/Milestone05_TeamDany  
-**Deployed URL:** https://weekly-sales-forecaster-teamdany.streamlit.app/
+**Developer:** Dany Deugoue — A00316024 — Solo Developer / MLOps Engineer
 
-## Team
-| Name | Student ID | Role |
-|------|------------|------|
-| Dany Deugoue | A00316024 | Solo Developer / MLOps Engineer |
+---
 
 ## Architecture
-This is a single-file Streamlit application — no separate API server required.
+
+### Streamlit (primary interface)
 
 ```
-[User Browser] → [Streamlit Cloud] → [app.py + model.pkl] → [Prediction Output]
+[User Browser] → [Streamlit Cloud] → [app.py + model.pkl + src/llm_client.py] → [Prediction + AI Advice]
 ```
+
+### Render (REST API + dashboard)
+
+```
+[User Browser] → [Render Docker] → [FastAPI api/main.py] → [/predict + /explain + /health]
+                                          ↓
+                                   [model.pkl + src/llm_client.py]
+```
+
+---
 
 ## Prerequisites
-- Python 3.10 or higher
+
+- Python 3.10+
 - pip
 - Git
 
+---
+
 ## Installation
-1. Clone the repository
+
+**1. Clone the repo**
+
 ```bash
 git clone https://github.com/Dany281022/Milestone05_TeamDany.git
 cd Milestone05_TeamDany
 ```
 
-2. Create and activate a virtual environment
+**2. Create and activate a virtual environment**
+
 ```bash
 python -m venv venv
 
-# Windows:
+# Windows
 venv\Scripts\activate
 
-# macOS/Linux:
-source venv/bin/activate
 ```
 
-3. Install dependencies
+**3. Install dependencies**
+
 ```bash
 pip install -r requirements.txt
 ```
 
-## Running Locally
+**4. Set environment variables**
+
 ```bash
-streamlit run app.py
-```
-App runs at: http://localhost:8501
-
-## Project Structure
-```
-Milestone05_TeamDany/
-├── app.py               ← Combined Streamlit app + model inference
-├── model.pkl            ← Trained RandomForestRegressor (13 features, log1p)
-├── requirements.txt     ← Dependencies (no version pins for Streamlit Cloud)
-├── README.md
-├── code/
-│   ├── data_pipeline.ipynb   ← Data preprocessing pipeline
-│   └── train_model.ipynb     ← Model training and evaluation
-├── data/
-│   └── processed/       ← X_train, X_test, y_train, y_test CSV files
-├── docs/
-│   └── TeamDany_Milestone4_Report.pdf
-├── tests/
-│   ├── test_integration.py
-│   └── test_predict.py
-└── ui/
-    └── app_ui.py        ← Legacy Assignment04 UI (FastAPI version)
+cp .env.example .env
 ```
 
-## Model Information
-- **Algorithm:** RandomForestRegressor
-- **Hyperparameters:** n_estimators=200, max_depth=None, min_samples_split=10, random_state=42
-- **Target transformation:** log1p(y) at training, expm1() at inference
-- **Features (13):** lag_1, lag_2, lag_4, lag_8, lag_12, lag_26, lag_52, ma_4, ma_12, std_4, weekofyear, month, year
-- **Dataset:** Walmart Stores Weekly Sales (Kaggle, 6,436 rows)
-- **Train/Test split:** Chronological cutoff January 1, 2012
-- **R2 Score:** 0.2829
-- **RMSE:** \$2,062,567
-- **MAE:** \$1,488,586
-- **Baseline RMSE (Naive):** \$2,481,007 (33.5% improvement)
-- **Response time:** ~10-60ms (Streamlit Cloud)
+Edit `.env`:
 
-## Features
-- 🔮 **Prediction Tab** — Enter 13 lag features, get instant dollar forecast
-- 📊 **Dashboard Tab** — Model performance metrics + real feature importance chart
-- 📋 **History Tab** — Track all predictions with CSV download
-- 🟢🟡🔵 **Colour-coded signals** — Stable / Higher demand / Lower demand
-- 📈 **Contextual framing** — % change vs last week + plain-language advice
-
-## Deployment
-Deployed on Streamlit Cloud via GitHub integration:
-1. Push code + model.pkl to GitHub
-2. Connect repo at share.streamlit.io
-3. Set main file to app.py
-4. Streamlit Cloud auto-installs requirements.txt
-
-## Known Issues & Limitations
-- Model trained on Walmart aggregate data — predictions are directional estimates
-- R2 of 0.28 indicates moderate fit with 48 training points
-- No authentication — public access
-- Cold start on first load: ~2s (subsequent calls ~10ms)
-
-## Error Handling
-| Situation | Behaviour |
-|-----------|-----------|
-| Model fails to load | Error message + app stops |
-| Invalid input | Streamlit min_value=0.0 prevents negatives |
-| Prediction error | Friendly error message displayed |
+```
+OPENAI_API_KEY=sk-...
+OLLAMA_MODEL=llama3.2:latest
+OLLAMA_BASE_URL=http://localhost:11434
+```
 
 ---
-AIE1014 — AI Applied Project Course | Team Dany | Winter 2026
+
+## Running Locally
+
+```bash
+# Streamlit
+streamlit run app.py
+
+# FastAPI
+uvicorn api.main:app --reload
+```
+
+| Interface | URL |
+|-----------|-----|
+| Streamlit | http://localhost:8501 |
+| FastAPI   | http://localhost:8000 |
+| Swagger   | http://localhost:8000/docs |
+
+---
+
+## Project Structure
+
+```
+Milestone05_TeamDany/
+├── app.py                    ← Streamlit app (4 tabs + LLM advisor)
+├── model.pkl                 ← RandomForestRegressor v2 (per-store, R²=0.9812)
+├── requirements.txt          ← Full dependencies
+├── requirements_render.txt   ← Render-only dependencies
+├── render.yaml               ← Render deployment config
+├── Dockerfile                ← Docker container for Render
+├── .env.example              ← Environment variable template
+├── README.md
+├── api/
+│   ├── __init__.py
+│   └── main.py               ← FastAPI: /predict, /explain, /health, /info
+├── src/
+│   ├── __init__.py
+│   └── llm_client.py         ← OpenAI + Ollama fallback LLM client
+├── static/
+│   └── index.html            ← Dashboard HTML served by Render
+├── code/
+│   ├── data_pipeline.ipynb   ← Data preprocessing pipeline
+│   ├── train_model.ipynb     ← Model v1 (RF aggregated, R²=0.2829)
+│   └── train_model_v2.ipynb  ← Model v2 (RF per-store, R²=0.9812)
+├── data/
+│   ├── raw/
+│   │   └── Walmart.csv       ← Raw Walmart dataset — Kaggle, 6,435 rows
+│   └── processed/
+│       ├── X_train.csv       ← Training features (2,160 rows)
+│       ├── X_test.csv        ← Test features (1,935 rows)
+│       ├── y_train.csv       ← Training targets
+│       └── y_test.csv        ← Test targets
+├── models/
+│   ├── rf_model_v2.pkl       ← RandomForest v2 (reference)
+│   └── xgb_model.pkl         ← XGBoost (reference)
+├── docs/
+│   └── TeamDany_Milestone5_Report.pdf
+└── tests/
+    ├── test_integration.py   ← 10 pipeline integration tests
+    └── test_predict.py       ← 14 model unit tests
+```
+
+---
+
+## Model — v2 (Production)
+
+| Parameter | Value |
+|-----------|-------|
+| Algorithm | RandomForestRegressor |
+| Training strategy | Per-store — 45 stores × ~143 weeks = 6,435 rows |
+| n_estimators | 200 |
+| max_depth | None |
+| min_samples_split | 10 |
+| random_state | 42 |
+| Target transform | log1p(y) at training / expm1() at inference |
+| Dataset | Walmart Stores Weekly Sales — Kaggle, 6,435 rows, 45 stores |
+| Train/Test split | Chronological cutoff January 1, 2012 |
+| R² Score | **0.9812** |
+| RMSE | **$73,473** per store |
+| MAE | **$47,281** per store |
+| Test set size | 1,935 rows — 1,935 unique predictions validated |
+
+**Features (13):**
+`lag_1`, `lag_2`, `lag_4`, `lag_8`, `lag_12`, `lag_26`, `lag_52`, `ma_4`, `ma_12`, `std_4`, `weekofyear`, `month`, `year`
+
+### Model v1 (archived)
+
+| Metric | Value |
+|--------|-------|
+| R² | 0.2829 |
+| RMSE | $2,062,567 |
+| MAE | $1,488,586 |
+
+Failure mode: one model trained on 143 aggregate weekly rows across 45 stores. Store-level variance was averaged out.
+
+---
+
+## API Endpoints (Render)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | Dashboard HTML |
+| `/health` | GET | Health probe + model/LLM status |
+| `/predict` | POST | Predict next-week sales — 13 features required |
+| `/explain` | POST | LLM-powered business explanation |
+| `/info` | GET | Model metadata |
+| `/docs` | GET | Swagger UI |
+
+---
+
+## App Features
+
+| Tab | What it does |
+|-----|--------------|
+| Prediction | Enter 13 lag features, get an instant per-store dollar forecast |
+| Dashboard | v1 vs v2 comparison + feature importance chart |
+| History | All predictions logged with CSV download |
+| AI Advisor | GPT-4o-mini explanations + inventory / staffing / risk buttons |
+
+Colour-coded demand signals: Stable / Higher demand / Lower demand  
+LLM fallback chain: OpenAI GPT-4o-mini → Ollama (llama3.2)
+
+---
+
+## LLM Integration (AIE1017)
+
+- **Explain prediction** — plain-English business analysis of the forecast
+- **Ask AI anything** — custom retail business questions
+- **Quick recommendations** — inventory, staffing, and risk assessment
+
+---
+
+## Deployment
+
+### Streamlit Cloud
+
+```
+1. Push code + model.pkl to GitHub
+2. Connect repo at share.streamlit.io
+3. Set main file: app.py
+4. Add secret: OPENAI_API_KEY
+```
+
+### Render (Docker)
+
+```
+1. Push code to GitHub
+2. New Web Service → connect repo
+3. Render auto-detects Dockerfile
+4. Add env vars: OPENAI_API_KEY, MODEL_PATH=model.pkl
+```
+
+---
+
+## Tests
+
+```bash
+python -m pytest tests/ -v -s
+```
+
+| Result | Detail |
+|--------|--------|
+| 24/24 tests passing | 10 integration + 14 unit |
+| RMSE validated | $73,473 on 1,935 real test rows |
+| Predictions | 1,935 unique outputs across test set |
+
+---
+
+## Error Handling
+
+| Situation | Behaviour |
+|-----------|-----------|
+| Model fails to load | Error displayed, app continues |
+| LLM unavailable | Warning shown, prediction still works |
+| Invalid input | `min_value=0.0` blocks negatives |
+| API error | Friendly error message displayed |
+
+---
+
+AIE1014 — AI Applied Project Course | AIE1017 — Generative AI and LLMs | Team Dany | Winter 2026
